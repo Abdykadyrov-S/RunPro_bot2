@@ -91,8 +91,25 @@ async def init_db():
         await connection.execute("""
         CREATE TABLE IF NOT EXISTS dispatchers (
             id SERIAL PRIMARY KEY,
-            name TEXT UNIQUE
+            name TEXT,
+            telegram_user_id BIGINT
         )
+        """)
+
+        await connection.execute("""
+        ALTER TABLE dispatchers
+        ADD COLUMN IF NOT EXISTS telegram_user_id BIGINT
+        """)
+
+        await connection.execute("""
+        ALTER TABLE dispatchers
+        DROP CONSTRAINT IF EXISTS dispatchers_name_key
+        """)
+
+        await connection.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS dispatchers_telegram_user_id_key
+        ON dispatchers(telegram_user_id)
+        WHERE telegram_user_id IS NOT NULL
         """)
 
         # Связь "много ко многим"

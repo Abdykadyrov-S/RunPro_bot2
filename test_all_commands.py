@@ -80,14 +80,16 @@ async def test_gross_dispatcher_command():
         print(f"  Found {len(dispatchers)} dispatchers")
         
         if dispatchers:
-            dispatcher_name = dispatchers[0]
+            dispatcher = dispatchers[0]
+            dispatcher_id = dispatcher["id"]
+            dispatcher_name = dispatcher["name"]
             # Calculate gross
-            gross = await gross_by_dispatcher(dispatcher_name)
+            gross = await gross_by_dispatcher(dispatcher_id)
             print(f"  Dispatcher: '{dispatcher_name}'")
             print(f"  Gross: ${gross:.2f}")
             
             # Test with date range
-            gross_dated = await gross_by_dispatcher(dispatcher_name, "3/1/2026", "3/31/2026")
+            gross_dated = await gross_by_dispatcher(dispatcher_id, "3/1/2026", "3/31/2026")
             print(f"  Gross (March 2026): ${gross_dated:.2f}")
         
         print("✅ /gross_dispatcher command working")
@@ -186,8 +188,8 @@ async def test_excel_export_dispatcher():
             return True
         
         dispatcher = dispatchers[0]
-        buffer, filename = await export_dispatcher_to_excel(dispatcher)
-        print(f"  Dispatcher: {dispatcher}")
+        buffer, filename = await export_dispatcher_to_excel(dispatcher["id"], dispatcher["name"])
+        print(f"  Dispatcher: {dispatcher['name']}")
         print(f"  Filename: {filename}")
         print(f"  File size: {len(buffer.getvalue())} bytes")
         assert buffer.tell() == 0, "Buffer should be seeked to beginning"
@@ -207,6 +209,7 @@ async def test_add_load_functionality():
         success, error = await add_load(
             driver_chat_id=-1001234567890,
             driver_name="TestDriver_Final",
+            dispatcher_user_id=123456789,
             dispatcher_name="TestDispatcher_Final",
             broker="TestBroker",
             load_number="FINAL001",

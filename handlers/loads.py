@@ -14,6 +14,8 @@ router = Router()
 YES_CALLBACK = "update_rate_yes"
 NO_CALLBACK = "update_rate_no"
 MESSAGE_PREFIX = "\u203c\ufe0f"
+CHECK_MARK = chr(0x2705)
+CROSS_MARK = chr(0x274C)
 
 pending_updates = {}
 
@@ -31,9 +33,9 @@ def admin_only(func):
 
         if user_id not in ADMINS:
             if isinstance(message_or_call, Message):
-                await message_or_call.reply("❌ Only admin can use this command")
+                await message_or_call.reply(f"{CROSS_MARK} Only admin can use this command")
             elif isinstance(message_or_call, CallbackQuery):
-                await message_or_call.answer("❌ Only admin can use this command", show_alert=True)
+                await message_or_call.answer(f"{CROSS_MARK} Only admin can use this command", show_alert=True)
             return
 
         return await func(message_or_call, *args, **kwargs)
@@ -41,9 +43,19 @@ def admin_only(func):
     return wrapper
 
 
-async def add_load(driver_chat_id, driver_name, dispatcher_name, broker, load_number, rate, pu_date=None, del_date=None):
+async def add_load(
+    driver_chat_id,
+    driver_name,
+    dispatcher_user_id,
+    dispatcher_name,
+    broker,
+    load_number,
+    rate,
+    pu_date=None,
+    del_date=None,
+):
     try:
-        driver_row = await fetch_one("SELECT id FROM drivers WHERE chat_id=$1", driver_chat_id)
+        driver_row = await fetch_one("SELECT id FROM drivers WHERE chat_id = $1", driver_chat_id)
         if driver_row is None:
             legacy_driver = await fetch_one(
                 """
@@ -69,7 +81,7 @@ async def add_load(driver_chat_id, driver_name, dispatcher_name, broker, load_nu
                     driver_name,
                 )
 
-            driver_row = await fetch_one("SELECT id FROM drivers WHERE chat_id=$1", driver_chat_id)
+            driver_row = await fetch_one("SELECT id FROM drivers WHERE chat_id = $1", driver_chat_id)
         else:
             await execute_query(
                 "UPDATE drivers SET name = $1 WHERE id = $2",
@@ -79,11 +91,46 @@ async def add_load(driver_chat_id, driver_name, dispatcher_name, broker, load_nu
 
         driver_id = driver_row["id"]
 
-        await execute_query(
-            "INSERT INTO dispatchers (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
-            dispatcher_name,
+        dispatcher_row = await fetch_one(
+            "SELECT id FROM dispatchers WHERE telegram_user_id = $1",
+            dispatcher_user_id,
         )
-        dispatcher_row = await fetch_one("SELECT id FROM dispatchers WHERE name=$1", dispatcher_name)
+        if dispatcher_row is None:
+            legacy_dispatcher = await fetch_one(
+                """
+                SELECT id
+                FROM dispatchers
+                WHERE telegram_user_id IS NULL AND name = $1
+                ORDER BY id
+                LIMIT 1
+                """,
+                dispatcher_name,
+            )
+            if legacy_dispatcher is not None:
+                await execute_query(
+                    "UPDATE dispatchers SET telegram_user_id = $1, name = $2 WHERE id = $3",
+                    dispatcher_user_id,
+                    dispatcher_name,
+                    legacy_dispatcher["id"],
+                )
+            else:
+                await execute_query(
+                    "INSERT INTO dispatchers (telegram_user_id, name) VALUES ($1, $2)",
+                    dispatcher_user_id,
+                    dispatcher_name,
+                )
+
+            dispatcher_row = await fetch_one(
+                "SELECT id FROM dispatchers WHERE telegram_user_id = $1",
+                dispatcher_user_id,
+            )
+        else:
+            await execute_query(
+                "UPDATE dispatchers SET name = $1 WHERE id = $2",
+                dispatcher_name,
+                dispatcher_row["id"],
+            )
+
         dispatcher_id = dispatcher_row["id"]
 
         await execute_query(
@@ -111,8 +158,21 @@ async def add_load(driver_chat_id, driver_name, dispatcher_name, broker, load_nu
         return True, None
     except asyncpg.UniqueViolationError:
         return False, "duplicate"
-    except Exception as e:
-        return False, str(e)
+    except Exception as exc:
+        return False, str(exc)
+
+
+async def notify_dispatcher_saved_load(message: Message, parsed: dict):
+    dispatcher_text = (
+        f"{CHECK_MARK} Load saved\n"
+        f"Driver: {message.chat.title or 'Unknown'}\n"
+        f"Load: {parsed['load_number']}\n"
+        f"Rate: ${parsed['rate']:.2f}"
+    )
+    try:
+        await message.bot.send_message(message.from_user.id, dispatcher_text)
+    except Exception:
+        logging.warning("could not send save notification to dispatcher %s", message.from_user.id)
 
 
 @router.message(F.chat.type.in_({"group", "supergroup"}))
@@ -131,6 +191,7 @@ async def handle_load_message(message: Message):
     success, error = await add_load(
         message.chat.id,
         driver_name,
+        message.from_user.id,
         parsed["dispatch"],
         parsed.get("broker"),
         parsed["load_number"],
@@ -140,8 +201,10 @@ async def handle_load_message(message: Message):
     )
 
     if success:
+        await notify_dispatcher_saved_load(message, parsed)
+
         admin_text = (
-            f"✅ Saved load in group '{message.chat.title or 'Unknown'}'\n"
+            f"{CHECK_MARK} Saved load in group '{message.chat.title or 'Unknown'}'\n"
             f"Load: {parsed['load_number']}\n"
             f"Dispatcher: {parsed['dispatch']}\n"
             f"Rate: ${parsed['rate']:.2f}"
@@ -158,8 +221,8 @@ async def handle_load_message(message: Message):
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="Yes ✅", callback_data=f"{YES_CALLBACK}:{parsed['load_number']}"),
-                    InlineKeyboardButton(text="No ❌", callback_data=f"{NO_CALLBACK}:{parsed['load_number']}"),
+                    InlineKeyboardButton(text=f"Yes {CHECK_MARK}", callback_data=f"{YES_CALLBACK}:{parsed['load_number']}"),
+                    InlineKeyboardButton(text=f"No {CROSS_MARK}", callback_data=f"{NO_CALLBACK}:{parsed['load_number']}"),
                 ]
             ]
         )
@@ -171,7 +234,7 @@ async def handle_load_message(message: Message):
     else:
         await notify_admins(
             message.bot,
-            f"❌ Error while saving load in group '{message.chat.title or 'Unknown'}':\n{error}",
+            f"{CROSS_MARK} Error while saving load in group '{message.chat.title or 'Unknown'}':\n{error}",
         )
 
 
@@ -196,7 +259,7 @@ async def handle_yes_update(call: CallbackQuery):
         load_number,
     )
 
-    await call.message.edit_text(f"Load {load_number} updated ✅")
+    await call.message.edit_text(f"Load {load_number} updated {CHECK_MARK}")
     pending_updates.pop(load_number, None)
     await call.answer()
 
@@ -205,6 +268,6 @@ async def handle_yes_update(call: CallbackQuery):
 @admin_only
 async def handle_no_update(call: CallbackQuery):
     load_number = call.data.split(":")[1]
-    await call.message.edit_text("A load with this load_number already exists ❌")
+    await call.message.edit_text(f"A load with this load_number already exists {CROSS_MARK}")
     pending_updates.pop(load_number, None)
     await call.answer()

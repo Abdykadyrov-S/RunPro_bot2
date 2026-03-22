@@ -13,7 +13,7 @@ from openpyxl import Workbook
 
 from db.database import fetch_all, fetch_one
 from keyboards.main import main_menu
-from services.admin import suppress_group
+from services.admin import ADMINS, suppress_group
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -28,6 +28,7 @@ EMOJI_CHART = chr(0x1F4CA)
 EMOJI_CARD = chr(0x1F4C7)
 BACK_LABEL = chr(0x25C0) + chr(0xFE0F) + " Back"
 ARROW = chr(0x2192)
+CROSS_MARK = chr(0x274C)
 
 
 class SelectionState(StatesGroup):
@@ -85,15 +86,15 @@ def dates_in_range(date_str: str, start_date: str, end_date: str) -> bool:
         start = datetime.strptime(start_date, "%m/%d/%Y")
         end = datetime.strptime(end_date, "%m/%d/%Y")
         return start <= date <= end
-    except Exception as e:
-        logger.error("dates_in_range error: %s, %s, %s - %s", date_str, start_date, end_date, e)
+    except Exception as exc:
+        logger.error("dates_in_range error: %s, %s, %s - %s", date_str, start_date, end_date, exc)
         return False
 
 
 def format_date(date_obj: datetime) -> str:
     formatted = date_obj.strftime("%m/%d/%Y")
-    parts = formatted.split("/")
-    return f"{int(parts[0])}/{int(parts[1])}/{parts[2]}"
+    month, day, year = formatted.split("/")
+    return f"{int(month)}/{int(day)}/{year}"
 
 
 def get_week_start_end() -> tuple[str, str]:
@@ -110,9 +111,9 @@ def get_week_start_end() -> tuple[str, str]:
 
 def get_last_week_start_end() -> tuple[str, str]:
     tuesday, monday = get_week_start_end()
-    t_dt = datetime.strptime(tuesday, "%m/%d/%Y") - timedelta(days=7)
-    m_dt = datetime.strptime(monday, "%m/%d/%Y") - timedelta(days=7)
-    return format_date(t_dt), format_date(m_dt)
+    tuesday_dt = datetime.strptime(tuesday, "%m/%d/%Y") - timedelta(days=7)
+    monday_dt = datetime.strptime(monday, "%m/%d/%Y") - timedelta(days=7)
+    return format_date(tuesday_dt), format_date(monday_dt)
 
 
 def get_period_dates(period: str) -> tuple[str, str] | None:
@@ -144,6 +145,41 @@ def get_period_dates(period: str) -> tuple[str, str] | None:
     return None
 
 
+def create_period_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"{EMOJI_CALENDAR} All Time", callback_data="period:all_time")],
+            [InlineKeyboardButton(text=f"{EMOJI_CHART} This Week (Tue-Mon)", callback_data="period:this_week")],
+            [InlineKeyboardButton(text=f"{chr(0x23EE)}{chr(0xFE0F)} Last Week", callback_data="period:last_week")],
+            [InlineKeyboardButton(text=f"{chr(0x1F4C8)} This Month", callback_data="period:this_month")],
+            [InlineKeyboardButton(text=f"{chr(0x1F4C9)} This Quarter", callback_data="period:this_quarter")],
+            [InlineKeyboardButton(text=f"{chr(0x1F4C6)} This Year", callback_data="period:this_year")],
+            [InlineKeyboardButton(text=f"{chr(0x1F527)} Custom Range", callback_data="period:custom")],
+            [InlineKeyboardButton(text=BACK_LABEL, callback_data="back_to_menu")],
+        ]
+    )
+
+
+def create_driver_keyboard(drivers: list[dict]) -> InlineKeyboardMarkup:
+    keyboard = []
+    for driver in drivers:
+        driver_name = driver["name"] or f"Driver #{driver['id']}"
+        keyboard.append([InlineKeyboardButton(text=f"{EMOJI_DRIVER} {driver_name}", callback_data=f"driver:{driver['id']}")])
+    keyboard.append([InlineKeyboardButton(text=BACK_LABEL, callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def create_dispatcher_keyboard(dispatchers: list[dict]) -> InlineKeyboardMarkup:
+    keyboard = []
+    for dispatcher in dispatchers:
+        dispatcher_name = dispatcher["name"] or f"Dispatcher #{dispatcher['id']}"
+        keyboard.append(
+            [InlineKeyboardButton(text=f"{EMOJI_DISPATCHER} {dispatcher_name}", callback_data=f"dispatcher:{dispatcher['id']}")]
+        )
+    keyboard.append([InlineKeyboardButton(text=BACK_LABEL, callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 async def gross_by_driver(driver_id, start_date=None, end_date=None):
     if start_date and end_date:
         rows = await fetch_all(
@@ -171,16 +207,15 @@ async def gross_by_driver(driver_id, start_date=None, end_date=None):
     return round(result["sum"] or 0, 2)
 
 
-async def gross_by_dispatcher(dispatcher_name, start_date=None, end_date=None):
+async def gross_by_dispatcher(dispatcher_id, start_date=None, end_date=None):
     if start_date and end_date:
         rows = await fetch_all(
             """
             SELECT rate, del_date
-            FROM loads l
-            JOIN dispatchers ds ON l.dispatcher_id = ds.id
-            WHERE ds.name = $1
+            FROM loads
+            WHERE dispatcher_id = $1
             """,
-            dispatcher_name,
+            dispatcher_id,
         )
         total = 0
         for row in rows:
@@ -191,11 +226,10 @@ async def gross_by_dispatcher(dispatcher_name, start_date=None, end_date=None):
     result = await fetch_one(
         """
         SELECT SUM(rate)
-        FROM loads l
-        JOIN dispatchers ds ON l.dispatcher_id = ds.id
-        WHERE ds.name = $1
+        FROM loads
+        WHERE dispatcher_id = $1
         """,
-        dispatcher_name,
+        dispatcher_id,
     )
     return round(result["sum"] or 0, 2)
 
@@ -242,7 +276,7 @@ async def export_driver_to_excel(driver_id, driver_name, start_date=None, end_da
     return buffer, filename
 
 
-async def export_dispatcher_to_excel(dispatcher_name, start_date=None, end_date=None):
+async def export_dispatcher_to_excel(dispatcher_id, dispatcher_name, start_date=None, end_date=None):
     rows = await fetch_all(
         """
         SELECT
@@ -256,9 +290,9 @@ async def export_dispatcher_to_excel(dispatcher_name, start_date=None, end_date=
         FROM loads l
         JOIN drivers d ON l.driver_id = d.id
         JOIN dispatchers ds ON l.dispatcher_id = ds.id
-        WHERE ds.name = $1
+        WHERE l.dispatcher_id = $1
         """,
-        dispatcher_name,
+        dispatcher_id,
     )
 
     wb = Workbook()
@@ -280,7 +314,11 @@ async def export_dispatcher_to_excel(dispatcher_name, start_date=None, end_date=
     wb.save(buffer)
     buffer.seek(0)
 
-    filename = f"dispatcher_{dispatcher_name}_{start_date}_to_{end_date}.xlsx" if start_date and end_date else f"dispatcher_{dispatcher_name}.xlsx"
+    filename = (
+        f"dispatcher_{dispatcher_name}_{start_date}_to_{end_date}.xlsx"
+        if start_date and end_date
+        else f"dispatcher_{dispatcher_name}.xlsx"
+    )
     return buffer, filename
 
 
@@ -289,41 +327,31 @@ async def get_all_drivers() -> list[dict]:
     return [{"id": row["id"], "name": row["name"], "chat_id": row["chat_id"]} for row in rows]
 
 
-async def get_all_dispatchers() -> list[str]:
-    rows = await fetch_all("SELECT name FROM dispatchers ORDER BY name")
-    return [row["name"] for row in rows]
+async def get_all_dispatchers() -> list[dict]:
+    rows = await fetch_all("SELECT id, name, telegram_user_id FROM dispatchers ORDER BY name, id")
+    return [{"id": row["id"], "name": row["name"], "telegram_user_id": row["telegram_user_id"]} for row in rows]
 
 
-def create_period_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=f"{EMOJI_CALENDAR} All Time", callback_data="period:all_time")],
-            [InlineKeyboardButton(text=f"{EMOJI_CHART} This Week (Tue-Mon)", callback_data="period:this_week")],
-            [InlineKeyboardButton(text=f"{chr(0x23EE)}{chr(0xFE0F)} Last Week", callback_data="period:last_week")],
-            [InlineKeyboardButton(text=f"{chr(0x1F4C8)} This Month", callback_data="period:this_month")],
-            [InlineKeyboardButton(text=f"{chr(0x1F4C9)} This Quarter", callback_data="period:this_quarter")],
-            [InlineKeyboardButton(text=f"{chr(0x1F4C6)} This Year", callback_data="period:this_year")],
-            [InlineKeyboardButton(text=f"{chr(0x1F527)} Custom Range", callback_data="period:custom")],
-            [InlineKeyboardButton(text=BACK_LABEL, callback_data="back_to_menu")],
-        ]
+async def send_gross_document(target_message: Message, entity_type: str, entity_name: str, entity_id: int, start_date=None, end_date=None, period_text="All Time"):
+    if entity_type == "driver":
+        total = await gross_by_driver(entity_id, start_date, end_date)
+        buffer, filename = await export_driver_to_excel(entity_id, entity_name, start_date, end_date)
+        emoji = EMOJI_TRUCK
+        label = "DRIVER"
+    else:
+        total = await gross_by_dispatcher(entity_id, start_date, end_date)
+        buffer, filename = await export_dispatcher_to_excel(entity_id, entity_name, start_date, end_date)
+        emoji = EMOJI_CHART
+        label = "DISPATCHER"
+
+    file = BufferedInputFile(buffer.getvalue(), filename=filename)
+    caption = (
+        f"{emoji} *Gross {label}*\n"
+        f"{EMOJI_CARD} {entity_name}\n\n"
+        f"{EMOJI_CALENDAR} {period_text}\n\n"
+        f"{EMOJI_MONEY} *TOTAL: ${total:.2f}*"
     )
-
-
-def create_driver_keyboard(drivers: list[dict]) -> InlineKeyboardMarkup:
-    keyboard = []
-    for driver in drivers:
-        driver_name = driver["name"] or f"Driver #{driver['id']}"
-        keyboard.append([InlineKeyboardButton(text=f"{EMOJI_DRIVER} {driver_name}", callback_data=f"driver:{driver['id']}")])
-    keyboard.append([InlineKeyboardButton(text=BACK_LABEL, callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-def create_dispatcher_keyboard(dispatchers: list[str]) -> InlineKeyboardMarkup:
-    keyboard = []
-    for dispatcher in dispatchers:
-        keyboard.append([InlineKeyboardButton(text=f"{EMOJI_DISPATCHER} {dispatcher}", callback_data=f"dispatcher:{dispatcher}")])
-    keyboard.append([InlineKeyboardButton(text=BACK_LABEL, callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await target_message.answer_document(file, caption=caption, parse_mode="Markdown", reply_markup=main_menu)
 
 
 @suppress_group
@@ -331,7 +359,7 @@ def create_dispatcher_keyboard(dispatchers: list[str]) -> InlineKeyboardMarkup:
 async def command_gross_driver(message: Message, state: FSMContext):
     drivers = await get_all_drivers()
     if not drivers:
-        await message.reply("❌ No drivers found in database", reply_markup=main_menu)
+        await message.reply(f"{CROSS_MARK} No drivers found in database", reply_markup=main_menu)
         return
 
     await state.set_state(SelectionState.waiting_for_period_type)
@@ -342,14 +370,45 @@ async def command_gross_driver(message: Message, state: FSMContext):
 @suppress_group
 @router.message(Command("gross_dispatcher"))
 async def command_gross_dispatcher(message: Message, state: FSMContext):
-    dispatchers = await get_all_dispatchers()
-    if not dispatchers:
-        await message.reply("❌ No dispatchers found in database", reply_markup=main_menu)
+    if message.from_user.id in ADMINS:
+        dispatchers = await get_all_dispatchers()
+        if not dispatchers:
+            await message.reply(f"{CROSS_MARK} No dispatchers found in database", reply_markup=main_menu)
+            return
+
+        await state.set_state(SelectionState.waiting_for_period_type)
+        await state.update_data(entity_type="dispatcher")
+        await message.reply(f"{EMOJI_DISPATCHER} Select a dispatcher:", reply_markup=create_dispatcher_keyboard(dispatchers))
         return
 
+    dispatcher_row = await fetch_one(
+        """
+        SELECT id, name
+        FROM dispatchers
+        WHERE telegram_user_id = $1
+        LIMIT 1
+        """,
+        message.from_user.id,
+    )
+    if not dispatcher_row:
+        await message.reply(
+            f"{CROSS_MARK} Your dispatcher profile was not found. Send at least one load first so the bot can bind your Telegram account.",
+            reply_markup=main_menu,
+        )
+        return
+
+    dispatcher_name = dispatcher_row["name"] or f"Dispatcher #{dispatcher_row['id']}"
     await state.set_state(SelectionState.waiting_for_period_type)
-    await state.update_data(entity_type="dispatcher")
-    await message.reply(f"{EMOJI_DISPATCHER} Select a dispatcher:", reply_markup=create_dispatcher_keyboard(dispatchers))
+    await state.update_data(
+        entity_type="dispatcher",
+        driver_or_dispatcher=dispatcher_name,
+        dispatcher_id=dispatcher_row["id"],
+    )
+    await message.reply(
+        f"{EMOJI_DISPATCHER} *{dispatcher_name}*\n\n{EMOJI_CALENDAR} Select period:",
+        parse_mode="Markdown",
+        reply_markup=create_period_keyboard(),
+    )
 
 
 @suppress_group
@@ -358,7 +417,7 @@ async def select_driver_callback(callback: CallbackQuery, state: FSMContext):
     driver_id = int(callback.data.split(":", 1)[1])
     driver_row = await fetch_one("SELECT id, name FROM drivers WHERE id = $1", driver_id)
     if not driver_row:
-        await callback.answer("❌ Driver not found", show_alert=True)
+        await callback.answer(f"{CROSS_MARK} Driver not found", show_alert=True)
         return
 
     driver_name = driver_row["name"] or f"Driver #{driver_row['id']}"
@@ -375,8 +434,14 @@ async def select_driver_callback(callback: CallbackQuery, state: FSMContext):
 @suppress_group
 @router.callback_query(F.data.startswith("dispatcher:"))
 async def select_dispatcher_callback(callback: CallbackQuery, state: FSMContext):
-    dispatcher_name = callback.data.split(":", 1)[1]
-    await state.update_data(driver_or_dispatcher=dispatcher_name)
+    dispatcher_id = int(callback.data.split(":", 1)[1])
+    dispatcher_row = await fetch_one("SELECT id, name FROM dispatchers WHERE id = $1", dispatcher_id)
+    if not dispatcher_row:
+        await callback.answer(f"{CROSS_MARK} Dispatcher not found", show_alert=True)
+        return
+
+    dispatcher_name = dispatcher_row["name"] or f"Dispatcher #{dispatcher_row['id']}"
+    await state.update_data(driver_or_dispatcher=dispatcher_name, dispatcher_id=dispatcher_id)
     await callback.message.delete()
     await callback.message.answer(
         f"{EMOJI_DISPATCHER} *{dispatcher_name}*\n\n{EMOJI_CALENDAR} Select period:",
@@ -395,9 +460,10 @@ async def select_period_callback(callback: CallbackQuery, state: FSMContext):
     entity_type = data.get("entity_type")
     name = data.get("driver_or_dispatcher")
     driver_id = data.get("driver_id")
+    dispatcher_id = data.get("dispatcher_id")
 
     if not name or not entity_type:
-        await callback.answer("❌ Error: missing selection", show_alert=True)
+        await callback.answer(f"{CROSS_MARK} Error: missing selection", show_alert=True)
         return
 
     if period == "custom":
@@ -405,17 +471,7 @@ async def select_period_callback(callback: CallbackQuery, state: FSMContext):
         await state.set_state(SelectionState.waiting_for_custom_date_range)
         return
 
-    date_range = get_period_dates(period) or (None, None)
-    start_date, end_date = date_range
-
-    if entity_type == "driver":
-        total = await gross_by_driver(driver_id, start_date, end_date)
-        emoji = EMOJI_TRUCK
-        label = "driver"
-    else:
-        total = await gross_by_dispatcher(name, start_date, end_date)
-        emoji = EMOJI_CHART
-        label = "dispatcher"
+    start_date, end_date = get_period_dates(period) or (None, None)
 
     if period == "all_time":
         period_text = "All Time"
@@ -433,25 +489,13 @@ async def select_period_callback(callback: CallbackQuery, state: FSMContext):
         period_text = "Custom"
 
     try:
-        if entity_type == "driver":
-            buffer, filename = await export_driver_to_excel(driver_id, name, start_date, end_date)
-        else:
-            buffer, filename = await export_dispatcher_to_excel(name, start_date, end_date)
-
-        file = BufferedInputFile(buffer.getvalue(), filename=filename)
-        caption = (
-            f"{emoji} *Gross {label.upper()}*\n"
-            f"{EMOJI_CARD} {name}\n\n"
-            f"{EMOJI_CALENDAR} {period_text}\n\n"
-            f"{EMOJI_MONEY} *TOTAL: ${total:.2f}*"
-        )
-
         await callback.message.delete()
-        await callback.message.answer_document(file, caption=caption, parse_mode="Markdown", reply_markup=main_menu)
+        entity_id = driver_id if entity_type == "driver" else dispatcher_id
+        await send_gross_document(callback.message, entity_type, name, entity_id, start_date, end_date, period_text)
         await state.clear()
-    except Exception as e:
+    except Exception as exc:
         await state.clear()
-        await callback.answer(f"❌ Error: {str(e)}", show_alert=True)
+        await callback.answer(f"{CROSS_MARK} Error: {str(exc)}", show_alert=True)
         logger.exception("Error exporting %s: %s", entity_type, name)
 
 
@@ -461,43 +505,31 @@ async def handle_custom_date_range(message: Message, state: FSMContext):
     date_range_str = message.text or ""
     date_range = parse_date_range(date_range_str)
     if not date_range:
-        await message.reply("❌ Invalid date format. Use: 2/24/26-3/2/26 or 2/24/2026-3/2/2026")
+        await message.reply(f"{CROSS_MARK} Invalid date format. Use: 2/24/26-3/2/26 or 2/24/2026-3/2/2026")
         return
 
     data = await state.get_data()
     entity_type = data.get("entity_type")
     name = data.get("driver_or_dispatcher")
     driver_id = data.get("driver_id")
+    dispatcher_id = data.get("dispatcher_id")
     start_date, end_date = date_range
 
-    if entity_type == "driver":
-        total = await gross_by_driver(driver_id, start_date, end_date)
-        emoji = EMOJI_TRUCK
-        label = "driver"
-    else:
-        total = await gross_by_dispatcher(name, start_date, end_date)
-        emoji = EMOJI_CHART
-        label = "dispatcher"
-
     try:
-        if entity_type == "driver":
-            buffer, filename = await export_driver_to_excel(driver_id, name, start_date, end_date)
-        else:
-            buffer, filename = await export_dispatcher_to_excel(name, start_date, end_date)
-
-        file = BufferedInputFile(buffer.getvalue(), filename=filename)
-        caption = (
-            f"{emoji} *Gross {label.upper()}*\n"
-            f"{EMOJI_CARD} {name}\n\n"
-            f"{EMOJI_CALENDAR} Custom Range\n{start_date} {ARROW} {end_date}\n\n"
-            f"{EMOJI_MONEY} *TOTAL: ${total:.2f}*"
+        entity_id = driver_id if entity_type == "driver" else dispatcher_id
+        await send_gross_document(
+            message,
+            entity_type,
+            name,
+            entity_id,
+            start_date,
+            end_date,
+            f"Custom Range\n{start_date} {ARROW} {end_date}",
         )
-
-        await message.answer_document(file, caption=caption, parse_mode="Markdown", reply_markup=main_menu)
         await state.clear()
-    except Exception as e:
+    except Exception as exc:
         await state.clear()
-        await message.reply(f"❌ Error: {str(e)}", reply_markup=main_menu)
+        await message.reply(f"{CROSS_MARK} Error: {str(exc)}", reply_markup=main_menu)
         logger.exception("Error exporting custom range %s: %s", entity_type, name)
 
 

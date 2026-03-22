@@ -25,7 +25,8 @@ async def start_handler(message: Message):
         await message.answer(
             f"Hello {message.from_user.full_name} 👋\n"
             f"Your id : {message.from_user.id}\n"
-            f"If you don’t see the commands, it means you don’t have administrator rights. Please contact your administrator to request access",
+            f"If you don’t see the commands, it means you don’t have administrator rights. Please contact your administrator to request access \n"
+            f"if you are a dispatch click to 👇 \n/gross_dispatcher",
         )
     
 
