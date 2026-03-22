@@ -57,7 +57,7 @@ All required tables exist and have data:
 - **Status:** Working with PostgreSQL
 - **Features:**
   - Parses "‼️" prefixed messages
-  - Extracts: truck_unit, load_number, dispatcher, rate
+  - Extracts: load_number, dispatcher, rate
   - Auto-creates drivers/dispatchers if new
   - Handles duplicate loads (offers update option)
   - Saves to PostgreSQL

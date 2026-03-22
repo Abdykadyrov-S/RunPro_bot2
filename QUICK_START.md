@@ -58,7 +58,6 @@ Use one of these formats:
 ### Message Example
 When you send a load message like:
 ```
-‼️TRUCK: 12 ‼️
 ‼️LOAD NUMBER: 567765 ‼️
 ‼️Dispatch: Sam Walter ‼️
 DEL time: 2/25/2026 1230
@@ -82,10 +81,10 @@ When you request a date range report:
 ### All-Time Export
 **File name:** `driver_John_Doe.xlsx`
 ```
-Driver | Dispatcher | Truck | Load # | Rate | DEL Date
--------|-----------|-------|--------|------|----------
-John   | Sam       | 12    | 567765 | 100  | 2/25/2026
-John   | Sam       | 15    | 567766 | 150  | 2/26/2026
+Driver | Dispatcher | Load # | Rate | DEL Date
+-------|-----------|--------|------|----------
+John   | Sam       | 567765 | 100  | 2/25/2026
+John   | Sam       | 567766 | 150  | 2/26/2026
 ...
 TOTAL:                                       | $5,250.00
 ```
@@ -93,10 +92,10 @@ TOTAL:                                       | $5,250.00
 ### Date-Range Export  
 **File name:** `driver_John_Doe_2/24/2026_to_3/2/2026.xlsx`
 ```
-Driver | Dispatcher | Truck | Load # | Rate | DEL Date
--------|-----------|-------|--------|------|----------
-John   | Sam       | 12    | 567765 | 100  | 2/25/2026
-John   | Sam       | 15    | 567766 | 150  | 2/26/2026
+Driver | Dispatcher | Load # | Rate | DEL Date
+-------|-----------|--------|------|----------
+John   | Sam       | 567765 | 100  | 2/25/2026
+John   | Sam       | 567766 | 150  | 2/26/2026
 ...
 TOTAL:                                       | $5,250.00
 ```

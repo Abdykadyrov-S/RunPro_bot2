@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS loads (
     id SERIAL PRIMARY KEY,
     driver_id INTEGER,
     dispatcher_id INTEGER,
-    truck_unit TEXT,
     broker TEXT,
     load_number TEXT UNIQUE,
     rate REAL,

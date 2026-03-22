@@ -12,7 +12,6 @@
 from services.parser import parse_load
 
 message_text = """
-‼️TRUCK: 12 ‼️
 ‼️LOAD NUMBER:  567765‼️
 ‼️Dispatch: Sam Walter ‼️
 DEL time: 2/25/2026 1230
@@ -21,7 +20,6 @@ DEL time: 2/25/2026 1230
 
 result = parse_load(message_text)
 # result = {
-#     "truck_unit": "12",
 #     "load_number": "567765",
 #     "dispatch": "Sam Walter",
 #     "rate": 100.0,
@@ -40,7 +38,6 @@ CREATE TABLE IF NOT EXISTS loads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     driver_id INTEGER,
     dispatcher_id INTEGER,
-    truck_unit TEXT,
     broker TEXT,
     load_number TEXT UNIQUE,
     rate REAL,
@@ -55,7 +52,7 @@ CREATE TABLE IF NOT EXISTS loads (
 - Removed duplicate `parse_load()` and `parse_rate_to_float()` (now imported from `services.parser`)
 - Updated `add_load()` function signature:
   ```python
-  def add_load(driver_name, dispatcher_name, truck_unit, broker, load_number, rate, del_date=None):
+  def add_load(driver_name, dispatcher_name, broker, load_number, rate, del_date=None):
   ```
 - Updated database insert to include `del_date`
 - Updated callback handlers to store and update `del_date` in pending_updates
@@ -108,7 +105,7 @@ total = gross_by_driver("John Doe")
 
 ### When a Load Message is Received:
 ```
-1. Message arrives: "‼️TRUCK: 12 ‼️...DEL time: 2/25/2026 1230...‼️RATE: $100 ‼️"
+1. Message arrives: "‼️LOAD NUMBER: 567765‼️...DEL time: 2/25/2026 1230...‼️RATE: $100 ‼️"
    ↓
 2. parse_load_from_parser(text) extracts all fields including del_date
    ↓

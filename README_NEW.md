@@ -99,7 +99,6 @@ python main.py
 ```
 ‼️BOOKED BY CMA ‼️
 ‼️BROKER: ITS‼️
-‼️TRUCK: 12 ‼️
 ‼️LOAD NUMBER: 567765‼️
 ‼️Dispatch: Sam Walter ‼️
 ===================

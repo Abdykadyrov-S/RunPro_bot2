@@ -205,7 +205,6 @@ async def test_add_load_functionality():
         success, error = await add_load(
             driver_name="TestDriver_Final",
             dispatcher_name="TestDispatcher_Final",
-            truck_unit="TESTUNIT",
             broker="TestBroker",
             load_number="FINAL001",
             rate=2000.00,

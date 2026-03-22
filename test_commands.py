@@ -69,9 +69,9 @@ async def test_add_load():
         
         # Add test load
         await execute_query("""
-            INSERT INTO loads (driver_id, dispatcher_id, truck_unit, broker, load_number, rate, pu_date, del_date)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        """, driver_id, dispatcher_id, "TEST123", "TestBroker", "LOAD001", 1500.00, "3/1/2026", "3/5/2026")
+            INSERT INTO loads (driver_id, dispatcher_id, broker, load_number, rate, pu_date, del_date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        """, driver_id, dispatcher_id, "TestBroker", "LOAD001", 1500.00, "3/1/2026", "3/5/2026")
         
         # Verify load was added
         load = await fetch_one("SELECT * FROM loads WHERE load_number=$1", "LOAD001")

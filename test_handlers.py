@@ -98,7 +98,6 @@ async def test_excel_export():
             SELECT
                 d.name AS driver,
                 ds.name AS dispatcher,
-                l.truck_unit,
                 l.broker,
                 l.load_number,
                 l.rate,
@@ -118,11 +117,11 @@ async def test_excel_export():
         wb = Workbook()
         ws = wb.active
         ws.title = "Test"
-        ws.append(["Driver", "Dispatcher", "Truck", "Broker", "Load Number", "Rate", "PU Date", "DEL Date"])
+        ws.append(["Driver", "Dispatcher", "Broker", "Load Number", "Rate", "PU Date", "DEL Date"])
         
         for row in driver_loads:
-            ws.append([row['driver'], row['dispatcher'], row['truck_unit'], row['broker'], 
-                      row['load_number'], row['rate'], row['pu_date'], row['del_date']])
+            ws.append([row['driver'], row['dispatcher'], row['broker'], row['load_number'],
+                      row['rate'], row['pu_date'], row['del_date']])
         
         print(f"✅ Excel export works - Created workbook with {len(driver_loads)} load(s)")
         return True

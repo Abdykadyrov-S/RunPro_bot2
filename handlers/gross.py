@@ -240,7 +240,6 @@ async def export_driver_to_excel(driver_name, start_date=None, end_date=None):
         SELECT
             d.name AS driver,
             ds.name AS dispatcher,
-            l.truck_unit,
             l.broker,
             l.load_number,
             l.rate,
@@ -257,7 +256,7 @@ async def export_driver_to_excel(driver_name, start_date=None, end_date=None):
     sheet_name = safe_sheet_title(driver_name)
     ws.title = sheet_name
 
-    ws.append(["Driver", "Dispatcher", "Truck", "Broker", "Load Number", "Rate", "PU Date", "DEL Date"])
+    ws.append(["Driver", "Dispatcher", "Broker", "Load Number", "Rate", "PU Date", "DEL Date"])
 
     total = 0
     for row in rows:
@@ -268,11 +267,11 @@ async def export_driver_to_excel(driver_name, start_date=None, end_date=None):
             if not dates_in_range(del_date, start_date, end_date):
                 continue
         
-        ws.append([row['driver'], row['dispatcher'], row['truck_unit'], row['broker'], row['load_number'], row['rate'], row['pu_date'], row['del_date']])
+        ws.append([row['driver'], row['dispatcher'], row['broker'], row['load_number'], row['rate'], row['pu_date'], row['del_date']])
         total += row['rate'] or 0
 
     ws.append([])
-    ws.append(["", "", "", "", "TOTAL", round(total, 2), "", ""])
+    ws.append(["", "", "", "TOTAL", round(total, 2), "", ""])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -293,7 +292,6 @@ async def export_dispatcher_to_excel(dispatcher_name, start_date=None, end_date=
         SELECT 
             d.name AS driver,
             ds.name AS dispatcher,
-            l.truck_unit,
             l.broker,
             l.load_number,
             l.rate,
@@ -310,7 +308,7 @@ async def export_dispatcher_to_excel(dispatcher_name, start_date=None, end_date=
     sheet_name = safe_sheet_title(dispatcher_name)
     ws.title = sheet_name
 
-    ws.append(["Driver", "Dispatcher", "Truck", "Broker", "Load Number", "Rate", "PU Date", "DEL Date"])
+    ws.append(["Driver", "Dispatcher", "Broker", "Load Number", "Rate", "PU Date", "DEL Date"])
 
     total = 0
     for row in rows:
@@ -321,11 +319,11 @@ async def export_dispatcher_to_excel(dispatcher_name, start_date=None, end_date=
             if not dates_in_range(del_date, start_date, end_date):
                 continue
         
-        ws.append([row['driver'], row['dispatcher'], row['truck_unit'], row['broker'], row['load_number'], row['rate'], row['pu_date'], row['del_date']])
+        ws.append([row['driver'], row['dispatcher'], row['broker'], row['load_number'], row['rate'], row['pu_date'], row['del_date']])
         total += row['rate'] or 0
 
     ws.append([])
-    ws.append(["", "", "", "", "TOTAL", round(total, 2), "", ""])
+    ws.append(["", "", "", "TOTAL", round(total, 2), "", ""])
 
     buffer = io.BytesIO()
     wb.save(buffer)

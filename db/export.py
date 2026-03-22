@@ -25,17 +25,17 @@ async def export_excel(message: Message):
     ws = wb.active
     ws.title = "Loads"
 
-    ws.append(["Driver", "Dispatcher", "Truck", "broker", "Load Number", "Rate"])
+    ws.append(["Driver", "Dispatcher", "broker", "Load Number", "Rate"])
 
     rows = await fetch_all("""
-        SELECT d.name, ds.name, l.truck_unit, l.broker, l.load_number, l.rate
+        SELECT d.name, ds.name, l.broker, l.load_number, l.rate
         FROM loads l
         JOIN drivers d ON l.driver_id = d.id
         JOIN dispatchers ds ON l.dispatcher_id = ds.id
     """)
 
     for row in rows:
-        ws.append([row['name'], row['name'], row['truck_unit'], row['broker'], row['load_number'], row['rate']])
+        ws.append([row['name'], row['name'], row['broker'], row['load_number'], row['rate']])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -68,7 +68,6 @@ async def export_dispatcher(message: Message):
             SELECT 
                 d.name AS driver,
                 ds.name AS dispatcher,
-                l.truck_unit,
                 l.load_number,
                 l.rate
             FROM loads l
@@ -86,7 +85,7 @@ async def export_dispatcher(message: Message):
     sheet_name = safe_sheet_title(dispatcher_name)
     ws.title = sheet_name
 
-    ws.append(["Driver", "Dispatcher", "Truck", "Load Number", "Rate"])
+    ws.append(["Driver", "Dispatcher", "Load Number", "Rate"])
 
     total = 0
     for row in rows:
@@ -95,7 +94,7 @@ async def export_dispatcher(message: Message):
 
     # Итоговая строка
     ws.append([])
-    ws.append(["", "", "", "TOTAL", round(total, 2)])
+    ws.append(["", "", "TOTAL", round(total, 2)])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -127,7 +126,6 @@ async def export_driver(message: Message):
             SELECT
                 d.name AS driver,
                 ds.name AS dispatcher,
-                l.truck_unit,
                 l.load_number,
                 l.rate
             FROM loads l
@@ -148,15 +146,15 @@ async def export_driver(message: Message):
     sheet_name = safe_sheet_title(driver_name)
     ws.title = sheet_name
 
-    ws.append(["Driver", "Dispatcher", "Truck", "Load Number", "Rate"])
+    ws.append(["Driver", "Dispatcher", "Load Number", "Rate"])
 
     total = 0
     for row in rows:
-        ws.append([row['driver'], row['dispatcher'], row['truck_unit'], row['load_number'], row['rate']])
+        ws.append([row['driver'], row['dispatcher'], row['load_number'], row['rate']])
         total += row['rate']
 
     ws.append([])
-    ws.append(["", "", "", "TOTAL", round(total, 2)])
+    ws.append(["", "", "TOTAL", round(total, 2)])
 
     buffer = io.BytesIO()
     wb.save(buffer)
