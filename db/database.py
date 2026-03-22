@@ -66,8 +66,25 @@ async def init_db():
         await connection.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             id SERIAL PRIMARY KEY,
-            name TEXT UNIQUE
+            name TEXT,
+            chat_id BIGINT
         )
+        """)
+
+        await connection.execute("""
+        ALTER TABLE drivers
+        ADD COLUMN IF NOT EXISTS chat_id BIGINT
+        """)
+
+        await connection.execute("""
+        ALTER TABLE drivers
+        DROP CONSTRAINT IF EXISTS drivers_name_key
+        """)
+
+        await connection.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS drivers_chat_id_key
+        ON drivers(chat_id)
+        WHERE chat_id IS NOT NULL
         """)
 
         # Диспетчеры

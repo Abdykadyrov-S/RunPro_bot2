@@ -46,7 +46,11 @@ async def test_add_load():
     try:
         # Add test driver
         await execute_query(
-            "INSERT INTO drivers (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
+            """
+            INSERT INTO drivers (chat_id, name) VALUES ($1, $2)
+            ON CONFLICT (chat_id) DO UPDATE SET name = EXCLUDED.name
+            """,
+            -1001111111111,
             "TestDriver123"
         )
         
@@ -57,7 +61,7 @@ async def test_add_load():
         )
         
         # Get IDs
-        driver_row = await fetch_one("SELECT id FROM drivers WHERE name=$1", "TestDriver123")
+        driver_row = await fetch_one("SELECT id FROM drivers WHERE chat_id=$1", -1001111111111)
         dispatcher_row = await fetch_one("SELECT id FROM dispatchers WHERE name=$1", "TestDispatcher123")
         
         if not driver_row or not dispatcher_row:

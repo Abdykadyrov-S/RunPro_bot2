@@ -50,14 +50,16 @@ async def test_gross_driver_command():
         print(f"  Found {len(drivers)} drivers")
         
         if drivers:
-            driver_name = drivers[0]
+            driver = drivers[0]
+            driver_id = driver["id"]
+            driver_name = driver["name"]
             # Calculate gross
-            gross = await gross_by_driver(driver_name)
+            gross = await gross_by_driver(driver_id)
             print(f"  Driver: '{driver_name}'")
             print(f"  Gross: ${gross:.2f}")
             
             # Test with date range
-            gross_dated = await gross_by_driver(driver_name, "3/1/2026", "3/31/2026")
+            gross_dated = await gross_by_driver(driver_id, "3/1/2026", "3/31/2026")
             print(f"  Gross (March 2026): ${gross_dated:.2f}")
         
         print("✅ /gross_driver command working")
@@ -160,8 +162,8 @@ async def test_excel_export_driver():
             return True
         
         driver = drivers[0]
-        buffer, filename = await export_driver_to_excel(driver)
-        print(f"  Driver: {driver}")
+        buffer, filename = await export_driver_to_excel(driver["id"], driver["name"])
+        print(f"  Driver: {driver['name']}")
         print(f"  Filename: {filename}")
         print(f"  File size: {len(buffer.getvalue())} bytes")
         assert buffer.tell() == 0, "Buffer should be seeked to beginning"
@@ -203,6 +205,7 @@ async def test_add_load_functionality():
     print("\n📦 Testing add load functionality...")
     try:
         success, error = await add_load(
+            driver_chat_id=-1001234567890,
             driver_name="TestDriver_Final",
             dispatcher_name="TestDispatcher_Final",
             broker="TestBroker",

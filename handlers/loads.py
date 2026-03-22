@@ -41,13 +41,42 @@ def admin_only(func):
     return wrapper
 
 
-async def add_load(driver_name, dispatcher_name, broker, load_number, rate, pu_date=None, del_date=None):
+async def add_load(driver_chat_id, driver_name, dispatcher_name, broker, load_number, rate, pu_date=None, del_date=None):
     try:
-        await execute_query(
-            "INSERT INTO drivers (name) VALUES ($1) ON CONFLICT (name) DO NOTHING",
-            driver_name,
-        )
-        driver_row = await fetch_one("SELECT id FROM drivers WHERE name=$1", driver_name)
+        driver_row = await fetch_one("SELECT id FROM drivers WHERE chat_id=$1", driver_chat_id)
+        if driver_row is None:
+            legacy_driver = await fetch_one(
+                """
+                SELECT id
+                FROM drivers
+                WHERE chat_id IS NULL AND name = $1
+                ORDER BY id
+                LIMIT 1
+                """,
+                driver_name,
+            )
+            if legacy_driver is not None:
+                await execute_query(
+                    "UPDATE drivers SET chat_id = $1, name = $2 WHERE id = $3",
+                    driver_chat_id,
+                    driver_name,
+                    legacy_driver["id"],
+                )
+            else:
+                await execute_query(
+                    "INSERT INTO drivers (chat_id, name) VALUES ($1, $2)",
+                    driver_chat_id,
+                    driver_name,
+                )
+
+            driver_row = await fetch_one("SELECT id FROM drivers WHERE chat_id=$1", driver_chat_id)
+        else:
+            await execute_query(
+                "UPDATE drivers SET name = $1 WHERE id = $2",
+                driver_name,
+                driver_row["id"],
+            )
+
         driver_id = driver_row["id"]
 
         await execute_query(
@@ -100,6 +129,7 @@ async def handle_load_message(message: Message):
         return
 
     success, error = await add_load(
+        message.chat.id,
         driver_name,
         parsed["dispatch"],
         parsed.get("broker"),

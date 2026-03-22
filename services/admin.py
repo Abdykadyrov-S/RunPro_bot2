@@ -57,7 +57,7 @@ async def register_chat(message: Message):
     
     await execute_query("""
         INSERT INTO chats (chat_id, title) VALUES ($1, $2)
-        ON CONFLICT (chat_id) DO NOTHING
+        ON CONFLICT (chat_id) DO UPDATE SET title = EXCLUDED.title
     """, chat_id, title)
 
 
