@@ -180,6 +180,25 @@ def create_dispatcher_keyboard(dispatchers: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+async def get_dispatcher_by_user_id(user_id: int):
+    return await fetch_one(
+        """
+        SELECT id, name
+        FROM dispatchers
+        WHERE telegram_user_id = $1
+        LIMIT 1
+        """,
+        user_id,
+    )
+
+
+async def can_view_driver_gross(user_id: int) -> bool:
+    if user_id in ADMINS:
+        return True
+    dispatcher_row = await get_dispatcher_by_user_id(user_id)
+    return dispatcher_row is not None
+
+
 async def gross_by_driver(driver_id, start_date=None, end_date=None):
     if start_date and end_date:
         rows = await fetch_all(
@@ -333,6 +352,13 @@ async def get_all_dispatchers() -> list[dict]:
 
 
 async def send_gross_document(target_message: Message, entity_type: str, entity_name: str, entity_id: int, start_date=None, end_date=None, period_text="All Time"):
+    if entity_type == "driver" and not await can_view_driver_gross(target_message.from_user.id):
+        await target_message.answer(
+            f"{CROSS_MARK} Only dispatcher or admin can view driver gross",
+            reply_markup=main_menu,
+        )
+        return
+
     if entity_type == "driver":
         total = await gross_by_driver(entity_id, start_date, end_date)
         buffer, filename = await export_driver_to_excel(entity_id, entity_name, start_date, end_date)
@@ -357,6 +383,13 @@ async def send_gross_document(target_message: Message, entity_type: str, entity_
 @suppress_group
 @router.message(Command("gross_driver"))
 async def command_gross_driver(message: Message, state: FSMContext):
+    if not await can_view_driver_gross(message.from_user.id):
+        await message.reply(
+            f"{CROSS_MARK} Only dispatcher or admin can view driver gross",
+            reply_markup=main_menu,
+        )
+        return
+
     drivers = await get_all_drivers()
     if not drivers:
         await message.reply(f"{CROSS_MARK} No drivers found in database", reply_markup=main_menu)
@@ -381,15 +414,7 @@ async def command_gross_dispatcher(message: Message, state: FSMContext):
         await message.reply(f"{EMOJI_DISPATCHER} Select a dispatcher:", reply_markup=create_dispatcher_keyboard(dispatchers))
         return
 
-    dispatcher_row = await fetch_one(
-        """
-        SELECT id, name
-        FROM dispatchers
-        WHERE telegram_user_id = $1
-        LIMIT 1
-        """,
-        message.from_user.id,
-    )
+    dispatcher_row = await get_dispatcher_by_user_id(message.from_user.id)
     if not dispatcher_row:
         await message.reply(
             f"{CROSS_MARK} Your dispatcher profile was not found. Send at least one load first so the bot can bind your Telegram account.",
@@ -414,6 +439,11 @@ async def command_gross_dispatcher(message: Message, state: FSMContext):
 @suppress_group
 @router.callback_query(F.data.startswith("driver:"))
 async def select_driver_callback(callback: CallbackQuery, state: FSMContext):
+    if not await can_view_driver_gross(callback.from_user.id):
+        await callback.answer(f"{CROSS_MARK} Only dispatcher or admin can view driver gross", show_alert=True)
+        await state.clear()
+        return
+
     driver_id = int(callback.data.split(":", 1)[1])
     driver_row = await fetch_one("SELECT id, name FROM drivers WHERE id = $1", driver_id)
     if not driver_row:
