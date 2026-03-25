@@ -351,8 +351,17 @@ async def get_all_dispatchers() -> list[dict]:
     return [{"id": row["id"], "name": row["name"], "telegram_user_id": row["telegram_user_id"]} for row in rows]
 
 
-async def send_gross_document(target_message: Message, entity_type: str, entity_name: str, entity_id: int, start_date=None, end_date=None, period_text="All Time"):
-    if entity_type == "driver" and not await can_view_driver_gross(target_message.from_user.id):
+async def send_gross_document(
+    target_message: Message,
+    requester_user_id: int,
+    entity_type: str,
+    entity_name: str,
+    entity_id: int,
+    start_date=None,
+    end_date=None,
+    period_text="All Time",
+):
+    if entity_type == "driver" and not await can_view_driver_gross(requester_user_id):
         await target_message.answer(
             f"{CROSS_MARK} Only dispatcher or admin can view driver gross",
             reply_markup=main_menu,
@@ -465,6 +474,22 @@ async def select_driver_callback(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("dispatcher:"))
 async def select_dispatcher_callback(callback: CallbackQuery, state: FSMContext):
     dispatcher_id = int(callback.data.split(":", 1)[1])
+    if callback.from_user.id not in ADMINS:
+        dispatcher_row = await get_dispatcher_by_user_id(callback.from_user.id)
+        if not dispatcher_row:
+            await callback.answer(
+                f"{CROSS_MARK} Your dispatcher profile was not found",
+                show_alert=True,
+            )
+            await state.clear()
+            return
+        if dispatcher_row["id"] != dispatcher_id:
+            await callback.answer(
+                f"{CROSS_MARK} You can only view your own dispatcher gross",
+                show_alert=True,
+            )
+            return
+
     dispatcher_row = await fetch_one("SELECT id, name FROM dispatchers WHERE id = $1", dispatcher_id)
     if not dispatcher_row:
         await callback.answer(f"{CROSS_MARK} Dispatcher not found", show_alert=True)
@@ -521,7 +546,16 @@ async def select_period_callback(callback: CallbackQuery, state: FSMContext):
     try:
         await callback.message.delete()
         entity_id = driver_id if entity_type == "driver" else dispatcher_id
-        await send_gross_document(callback.message, entity_type, name, entity_id, start_date, end_date, period_text)
+        await send_gross_document(
+            callback.message,
+            callback.from_user.id,
+            entity_type,
+            name,
+            entity_id,
+            start_date,
+            end_date,
+            period_text,
+        )
         await state.clear()
     except Exception as exc:
         await state.clear()
@@ -549,6 +583,7 @@ async def handle_custom_date_range(message: Message, state: FSMContext):
         entity_id = driver_id if entity_type == "driver" else dispatcher_id
         await send_gross_document(
             message,
+            message.from_user.id,
             entity_type,
             name,
             entity_id,
