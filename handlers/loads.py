@@ -3,9 +3,10 @@ import logging
 
 import asyncpg
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from db.database import execute_query, fetch_one
+from db.database import execute_query, fetch_all, fetch_one, get_connection
 from services.admin import ADMINS, notify_admins
 from services.parser import parse_load as parse_load_from_parser
 
@@ -41,6 +42,222 @@ def admin_only(func):
         return await func(message_or_call, *args, **kwargs)
 
     return wrapper
+
+
+async def merge_driver_records(source_id: int, target_id: int) -> tuple[bool, str]:
+    if source_id == target_id:
+        return False, "Source and target driver IDs must be different"
+
+    conn = await get_connection()
+    async with conn.acquire() as connection:
+        async with connection.transaction():
+            source = await connection.fetchrow(
+                "SELECT id, name, chat_id FROM drivers WHERE id = $1",
+                source_id,
+            )
+            target = await connection.fetchrow(
+                "SELECT id, name, chat_id FROM drivers WHERE id = $1",
+                target_id,
+            )
+
+            if source is None:
+                return False, f"Driver {source_id} not found"
+            if target is None:
+                return False, f"Driver {target_id} not found"
+            if source["chat_id"] is not None and target["chat_id"] is not None and source["chat_id"] != target["chat_id"]:
+                return False, "Drivers have different chat_id values. Merge aborted to avoid mixing two groups"
+
+            keep_chat_id = target["chat_id"] if target["chat_id"] is not None else source["chat_id"]
+            keep_name = target["name"] or source["name"]
+
+            await connection.execute(
+                "UPDATE drivers SET name = $1, chat_id = $2 WHERE id = $3",
+                keep_name,
+                keep_chat_id,
+                target_id,
+            )
+
+            await connection.execute(
+                "UPDATE loads SET driver_id = $1 WHERE driver_id = $2",
+                target_id,
+                source_id,
+            )
+
+            await connection.execute(
+                """
+                INSERT INTO driver_dispatcher (driver_id, dispatcher_id)
+                SELECT $1, dispatcher_id
+                FROM driver_dispatcher
+                WHERE driver_id = $2
+                ON CONFLICT (driver_id, dispatcher_id) DO NOTHING
+                """,
+                target_id,
+                source_id,
+            )
+
+            await connection.execute("DELETE FROM driver_dispatcher WHERE driver_id = $1", source_id)
+            await connection.execute("DELETE FROM drivers WHERE id = $1", source_id)
+
+    return True, f"Driver {source_id} merged into driver {target_id}"
+
+
+async def merge_dispatcher_records(source_id: int, target_id: int) -> tuple[bool, str]:
+    if source_id == target_id:
+        return False, "Source and target dispatcher IDs must be different"
+
+    conn = await get_connection()
+    async with conn.acquire() as connection:
+        async with connection.transaction():
+            source = await connection.fetchrow(
+                "SELECT id, name, telegram_user_id FROM dispatchers WHERE id = $1",
+                source_id,
+            )
+            target = await connection.fetchrow(
+                "SELECT id, name, telegram_user_id FROM dispatchers WHERE id = $1",
+                target_id,
+            )
+
+            if source is None:
+                return False, f"Dispatcher {source_id} not found"
+            if target is None:
+                return False, f"Dispatcher {target_id} not found"
+            if (
+                source["telegram_user_id"] is not None
+                and target["telegram_user_id"] is not None
+                and source["telegram_user_id"] != target["telegram_user_id"]
+            ):
+                return False, "Dispatchers have different telegram_user_id values. Merge aborted to avoid mixing two users"
+
+            keep_user_id = (
+                target["telegram_user_id"]
+                if target["telegram_user_id"] is not None
+                else source["telegram_user_id"]
+            )
+            keep_name = target["name"] or source["name"]
+
+            await connection.execute(
+                "UPDATE dispatchers SET name = $1, telegram_user_id = $2 WHERE id = $3",
+                keep_name,
+                keep_user_id,
+                target_id,
+            )
+
+            await connection.execute(
+                "UPDATE loads SET dispatcher_id = $1 WHERE dispatcher_id = $2",
+                target_id,
+                source_id,
+            )
+
+            await connection.execute(
+                """
+                INSERT INTO driver_dispatcher (driver_id, dispatcher_id)
+                SELECT driver_id, $1
+                FROM driver_dispatcher
+                WHERE dispatcher_id = $2
+                ON CONFLICT (driver_id, dispatcher_id) DO NOTHING
+                """,
+                target_id,
+                source_id,
+            )
+
+            await connection.execute("DELETE FROM driver_dispatcher WHERE dispatcher_id = $1", source_id)
+            await connection.execute("DELETE FROM dispatchers WHERE id = $1", source_id)
+
+    return True, f"Dispatcher {source_id} merged into dispatcher {target_id}"
+
+
+@router.message(Command("drivers_db"))
+@admin_only
+async def command_drivers_db(message: Message):
+    rows = await fetch_all(
+        """
+        SELECT
+            d.id,
+            d.name,
+            d.chat_id,
+            COUNT(l.id) AS loads_count
+        FROM drivers d
+        LEFT JOIN loads l ON l.driver_id = d.id
+        GROUP BY d.id, d.name, d.chat_id
+        ORDER BY d.name NULLS LAST, d.id
+        """
+    )
+    if not rows:
+        await message.reply("No drivers found")
+        return
+
+    lines = ["Drivers in DB:"]
+    for row in rows:
+        lines.append(
+            f"ID {row['id']} | {row['name'] or 'Unknown'} | chat_id: {row['chat_id'] or 'NULL'} | loads: {row['loads_count']}"
+        )
+    await message.reply("\n".join(lines))
+
+
+@router.message(Command("dispatchers_db"))
+@admin_only
+async def command_dispatchers_db(message: Message):
+    rows = await fetch_all(
+        """
+        SELECT
+            d.id,
+            d.name,
+            d.telegram_user_id,
+            COUNT(l.id) AS loads_count
+        FROM dispatchers d
+        LEFT JOIN loads l ON l.dispatcher_id = d.id
+        GROUP BY d.id, d.name, d.telegram_user_id
+        ORDER BY d.name NULLS LAST, d.id
+        """
+    )
+    if not rows:
+        await message.reply("No dispatchers found")
+        return
+
+    lines = ["Dispatchers in DB:"]
+    for row in rows:
+        lines.append(
+            f"ID {row['id']} | {row['name'] or 'Unknown'} | user_id: {row['telegram_user_id'] or 'NULL'} | loads: {row['loads_count']}"
+        )
+    await message.reply("\n".join(lines))
+
+
+@router.message(Command("merge_driver"))
+@admin_only
+async def command_merge_driver(message: Message):
+    parts = (message.text or "").split()
+    if len(parts) != 3:
+        await message.reply("Usage: /merge_driver <duplicate_id> <keep_id>")
+        return
+
+    try:
+        source_id = int(parts[1])
+        target_id = int(parts[2])
+    except ValueError:
+        await message.reply("Driver IDs must be numbers")
+        return
+
+    success, text = await merge_driver_records(source_id, target_id)
+    await message.reply(f"{CHECK_MARK if success else CROSS_MARK} {text}")
+
+
+@router.message(Command("merge_dispatcher"))
+@admin_only
+async def command_merge_dispatcher(message: Message):
+    parts = (message.text or "").split()
+    if len(parts) != 3:
+        await message.reply("Usage: /merge_dispatcher <duplicate_id> <keep_id>")
+        return
+
+    try:
+        source_id = int(parts[1])
+        target_id = int(parts[2])
+    except ValueError:
+        await message.reply("Dispatcher IDs must be numbers")
+        return
+
+    success, text = await merge_dispatcher_records(source_id, target_id)
+    await message.reply(f"{CHECK_MARK if success else CROSS_MARK} {text}")
 
 
 async def add_load(
