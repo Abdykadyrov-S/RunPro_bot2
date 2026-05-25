@@ -155,7 +155,7 @@ Run the following to verify implementation:
 ```python
 # Test 1: Parse date from message
 from services.parser import parse_load
-result = parse_load("‼️...DEL time: 2/25/2026 1230...‼️RATE: $100 ‼️")
+result = parse_load("‼️...DEL time: 2/25/2026 1230...Rate: $100")
 assert result["del_date"] == "2/25/2026"
 
 # Test 2: Parse date range

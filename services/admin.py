@@ -31,21 +31,25 @@ async def notify_admins(bot, text: str, reply_markup=None, parse_mode=None):
 def suppress_group(func):
     """Decorator: if a command is invoked in a group, don't reply in group — notify admins instead."""
     @wraps(func)
-    async def wrapper(message, *args, **kwargs):
+    async def wrapper(message_or_call, *args, **kwargs):
         try:
+            message = message_or_call.message if isinstance(message_or_call, CallbackQuery) else message_or_call
             chat_type = message.chat.type
         except Exception:
+            message = None
             chat_type = None
 
         if chat_type in ("group", "supergroup"):
             text = (
                 f"Команда вызвана в группе '{message.chat.title or message.chat.id}':\n"
-                f"{message.text or ''}"
+                f"{getattr(message, 'text', None) or ''}"
             )
-            await notify_admins(message.bot, text)
+            await notify_admins(message_or_call.bot, text)
+            if isinstance(message_or_call, CallbackQuery):
+                await message_or_call.answer()
             return
 
-        return await func(message, *args, **kwargs)
+        return await func(message_or_call, *args, **kwargs)
 
     return wrapper
 
@@ -94,6 +98,7 @@ async def broadcast_button(call: CallbackQuery):
 
 
 @router.message(Command("broadcast_drivers"))
+@suppress_group
 @admin_only
 async def broadcast_drivers_command(message: Message):
     """Команда для начала рассылки водителям"""
@@ -136,6 +141,7 @@ async def cancel_broadcast(call: CallbackQuery):
 
 
 @router.message(Command("get_drivers_groups"))
+@suppress_group
 @admin_only
 async def get_drivers_groups(message: Message):
     """Получить список всех групп водителей"""

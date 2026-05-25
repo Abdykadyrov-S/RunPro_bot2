@@ -108,9 +108,20 @@ PU time: 02/25/2026 0330
 DEL address: 456 Oak Ave
 DEL time: 2/25/2026 1230
 ===================
-‼️RATE: $100 ‼️
+Rate: $100
 RPM: $1.0/mi
 Miles: 100 mi
+```
+
+### Load Updates
+```
+‼️LOAD NUMBER: 0073741‼️
+canceled
+```
+
+```
+‼️LOAD NUMBER: 0073741‼️
+REVISED RATE: $1868.74
 ```
 
 ### Commands

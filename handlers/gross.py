@@ -200,57 +200,71 @@ async def can_view_driver_gross(user_id: int) -> bool:
 
 
 async def gross_by_driver(driver_id, start_date=None, end_date=None):
+    total_rate, _ = await gross_totals_by_driver(driver_id, start_date, end_date)
+    return total_rate
+
+
+async def gross_totals_by_driver(driver_id, start_date=None, end_date=None):
     if start_date and end_date:
         rows = await fetch_all(
             """
-            SELECT rate, del_date
+            SELECT rate, miles, del_date
             FROM loads
             WHERE driver_id = $1
             """,
             driver_id,
         )
-        total = 0
+        total_rate = 0
+        total_miles = 0
         for row in rows:
             if dates_in_range(row["del_date"], start_date, end_date):
-                total += row["rate"] or 0
-        return round(total, 2)
+                total_rate += row["rate"] or 0
+                total_miles += row["miles"] or 0
+        return round(total_rate, 2), round(total_miles, 2)
 
     result = await fetch_one(
         """
-        SELECT SUM(rate)
+        SELECT SUM(rate) AS total_rate, SUM(miles) AS total_miles
         FROM loads
         WHERE driver_id = $1
         """,
         driver_id,
     )
-    return round(result["sum"] or 0, 2)
+    return round(result["total_rate"] or 0, 2), round(result["total_miles"] or 0, 2)
 
 
 async def gross_by_dispatcher(dispatcher_id, start_date=None, end_date=None):
+    total_rate, _ = await gross_totals_by_dispatcher(dispatcher_id, start_date, end_date)
+    return total_rate
+
+
+async def gross_totals_by_dispatcher(dispatcher_id, start_date=None, end_date=None):
     if start_date and end_date:
         rows = await fetch_all(
             """
-            SELECT rate, del_date
+            SELECT rate, miles, del_date
             FROM loads
             WHERE dispatcher_id = $1
             """,
             dispatcher_id,
         )
-        total = 0
+        total_rate = 0
+        total_miles = 0
         for row in rows:
             if dates_in_range(row["del_date"], start_date, end_date):
-                total += row["rate"] or 0
-        return round(total, 2)
+                total_rate += row["rate"] or 0
+                total_miles += row["miles"] or 0
+        return round(total_rate, 2), round(total_miles, 2)
 
     result = await fetch_one(
         """
-        SELECT SUM(rate)
+        SELECT SUM(rate) AS total_rate, SUM(miles) AS total_miles
         FROM loads
         WHERE dispatcher_id = $1
         """,
         dispatcher_id,
     )
-    return round(result["sum"] or 0, 2)
+    return round(result["total_rate"] or 0, 2), round(result["total_miles"] or 0, 2)
 
 
 async def export_driver_to_excel(driver_id, driver_name, start_date=None, end_date=None):
@@ -278,7 +292,8 @@ async def export_driver_to_excel(driver_id, driver_name, start_date=None, end_da
     ws.title = safe_sheet_title(driver_name)
     ws.append(["Driver", "Dispatcher", "Broker", "Load Number", "Rate", "Miles", "PU Date", "DEL Date"])
 
-    total = 0
+    total_rate = 0
+    total_miles = 0
     for row in rows:
         if start_date and end_date and not dates_in_range(row["del_date"], start_date, end_date):
             continue
@@ -294,10 +309,11 @@ async def export_driver_to_excel(driver_id, driver_name, start_date=None, end_da
                 row["del_date"],
             ]
         )
-        total += row["rate"] or 0
+        total_rate += row["rate"] or 0
+        total_miles += row["miles"] or 0
 
     ws.append([])
-    ws.append(["", "", "", "TOTAL", round(total, 2), "", "", ""])
+    ws.append(["", "", "", "TOTAL", round(total_rate, 2), round(total_miles, 2), "", ""])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -332,7 +348,8 @@ async def export_dispatcher_to_excel(dispatcher_id, dispatcher_name, start_date=
     ws.title = safe_sheet_title(dispatcher_name)
     ws.append(["Driver", "Dispatcher", "Broker", "Load Number", "Rate", "Miles", "PU Date", "DEL Date"])
 
-    total = 0
+    total_rate = 0
+    total_miles = 0
     for row in rows:
         if start_date and end_date and not dates_in_range(row["del_date"], start_date, end_date):
             continue
@@ -348,10 +365,11 @@ async def export_dispatcher_to_excel(dispatcher_id, dispatcher_name, start_date=
                 row["del_date"],
             ]
         )
-        total += row["rate"] or 0
+        total_rate += row["rate"] or 0
+        total_miles += row["miles"] or 0
 
     ws.append([])
-    ws.append(["", "", "", "TOTAL", round(total, 2), "", "", ""])
+    ws.append(["", "", "", "TOTAL", round(total_rate, 2), round(total_miles, 2), "", ""])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -393,12 +411,12 @@ async def send_gross_document(
         return
 
     if entity_type == "driver":
-        total = await gross_by_driver(entity_id, start_date, end_date)
+        total, total_miles = await gross_totals_by_driver(entity_id, start_date, end_date)
         buffer, filename = await export_driver_to_excel(entity_id, entity_name, start_date, end_date)
         emoji = EMOJI_TRUCK
         label = "DRIVER"
     else:
-        total = await gross_by_dispatcher(entity_id, start_date, end_date)
+        total, total_miles = await gross_totals_by_dispatcher(entity_id, start_date, end_date)
         buffer, filename = await export_dispatcher_to_excel(entity_id, entity_name, start_date, end_date)
         emoji = EMOJI_CHART
         label = "DISPATCHER"
@@ -408,13 +426,14 @@ async def send_gross_document(
         f"{emoji} *Gross {label}*\n"
         f"{EMOJI_CARD} {entity_name}\n\n"
         f"{EMOJI_CALENDAR} {period_text}\n\n"
-        f"{EMOJI_MONEY} *TOTAL: ${total:.2f}*"
+        f"{EMOJI_MONEY} *TOTAL: ${total:.2f}*\n"
+        f"{EMOJI_TRUCK} *TOTAL MILES: {total_miles:.2f}*"
     )
     await target_message.answer_document(file, caption=caption, parse_mode="Markdown", reply_markup=main_menu)
 
 
-@suppress_group
 @router.message(Command("gross_driver"))
+@suppress_group
 async def command_gross_driver(message: Message, state: FSMContext):
     if not await can_view_driver_gross(message.from_user.id):
         await message.reply(
@@ -433,8 +452,8 @@ async def command_gross_driver(message: Message, state: FSMContext):
     await message.reply(f"{EMOJI_DRIVER} Select a driver:", reply_markup=create_driver_keyboard(drivers))
 
 
-@suppress_group
 @router.message(Command("gross_dispatcher"))
+@suppress_group
 async def command_gross_dispatcher(message: Message, state: FSMContext):
     if message.from_user.id in ADMINS:
         dispatchers = await get_all_dispatchers()
@@ -469,8 +488,8 @@ async def command_gross_dispatcher(message: Message, state: FSMContext):
     )
 
 
-@suppress_group
 @router.callback_query(F.data.startswith("driver:"))
+@suppress_group
 async def select_driver_callback(callback: CallbackQuery, state: FSMContext):
     if not await can_view_driver_gross(callback.from_user.id):
         await callback.answer(f"{CROSS_MARK} Only dispatcher or admin can view driver gross", show_alert=True)
@@ -494,8 +513,8 @@ async def select_driver_callback(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@suppress_group
 @router.callback_query(F.data.startswith("dispatcher:"))
+@suppress_group
 async def select_dispatcher_callback(callback: CallbackQuery, state: FSMContext):
     dispatcher_id = int(callback.data.split(":", 1)[1])
     if callback.from_user.id not in ADMINS:
@@ -530,8 +549,8 @@ async def select_dispatcher_callback(callback: CallbackQuery, state: FSMContext)
     await callback.answer()
 
 
-@suppress_group
 @router.callback_query(F.data.startswith("period:"))
+@suppress_group
 async def select_period_callback(callback: CallbackQuery, state: FSMContext):
     period = callback.data.split(":", 1)[1]
     data = await state.get_data()
@@ -587,8 +606,8 @@ async def select_period_callback(callback: CallbackQuery, state: FSMContext):
         logger.exception("Error exporting %s: %s", entity_type, name)
 
 
-@suppress_group
 @router.message(SelectionState.waiting_for_custom_date_range)
+@suppress_group
 async def handle_custom_date_range(message: Message, state: FSMContext):
     date_range_str = message.text or ""
     date_range = parse_date_range(date_range_str)
@@ -622,8 +641,8 @@ async def handle_custom_date_range(message: Message, state: FSMContext):
         logger.exception("Error exporting custom range %s: %s", entity_type, name)
 
 
-@suppress_group
 @router.callback_query(F.data == "back_to_menu")
+@suppress_group
 async def back_to_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.delete()

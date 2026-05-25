@@ -11,8 +11,8 @@ router = Router()
 
 
 
-@suppress_group
 @router.message(CommandStart())
+@suppress_group
 async def start_handler(message: Message):
     if message.from_user.id in ADMINS:
         await message.answer(
@@ -38,8 +38,8 @@ ADMIN_HELP_TEXT = f"""
 🤖 *budut komandy bota for admins*
 """
 
-@suppress_group
 @router.message(Command("help"))
+@suppress_group
 async def help_command(message: Message):
     if message.from_user.id in ADMINS:
         await message.reply(ADMIN_HELP_TEXT, parse_mode="Markdown")

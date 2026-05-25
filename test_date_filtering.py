@@ -134,13 +134,13 @@ def test_date_range_checking():
 
 def test_parse_load():
     print("\nTesting parse_load with date extraction...")
-    from services.parser import parse_load
+    from services.parser import parse_load, parse_load_update
 
     message = """\u203c\ufe0fLOAD NUMBER: 567765\u203c\ufe0f
 \u203c\ufe0fDispatch: Sam Walter \u203c\ufe0f
 PU time: 03/22/26
 DEL time: 22 Mar
-\u203c\ufe0fRATE: $100 \u203c\ufe0f"""
+Rate: $100"""
 
     result = parse_load(message)
 
@@ -172,6 +172,16 @@ DEL time: 22 Mar
     result_with_miles = parse_load(message_with_miles)
     if result_with_miles.get("miles") != 1250.5:
         print(f"  FAIL miles not correctly parsed: {result_with_miles.get('miles')}")
+        return False
+
+    canceled = parse_load_update("\u203c\ufe0fLOAD NUMBER: 0073741\u203c\ufe0f\ncanceled")
+    if canceled != {"action": "canceled", "load_number": "0073741", "rate": 0.0}:
+        print(f"  FAIL canceled update not correctly parsed: {canceled}")
+        return False
+
+    revised = parse_load_update("\u203c\ufe0fLOAD NUMBER: 0073741\u203c\ufe0f\nREVISED RATE: $1868.74")
+    if revised != {"action": "revised_rate", "load_number": "0073741", "rate": 1868.74}:
+        print(f"  FAIL revised rate update not correctly parsed: {revised}")
         return False
 
     print("  OK parse_load correctly normalizes supported date formats")

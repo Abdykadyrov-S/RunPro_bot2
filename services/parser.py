@@ -93,7 +93,7 @@ def parse_date_from_time_string(time_string: str) -> str | None:
 
 
 def parse_load(text: str) -> dict:
-    rate_raw = extract_between(text, f"{FIELD_END}RATE:")
+    rate_raw = extract_between(text, f"{FIELD_END}RATE:") or extract_line_value(text, "Rate")
     miles_raw = extract_line_value(text, "Miles")
     pu_time = extract_between(text, "PU time:")
     pu_date = parse_date_from_time_string(pu_time) if pu_time else None
@@ -110,3 +110,27 @@ def parse_load(text: str) -> dict:
         "pu_date": pu_date,
         "del_date": del_date,
     }
+
+
+def parse_load_update(text: str) -> dict | None:
+    load_number = extract_between(text, f"{FIELD_END}LOAD NUMBER:")
+    if not load_number:
+        return None
+
+    if re.search(r"\bcanceled\b", text, re.IGNORECASE):
+        return {
+            "action": "canceled",
+            "load_number": load_number,
+            "rate": 0.0,
+        }
+
+    revised_rate_raw = extract_line_value(text, "REVISED RATE")
+    revised_rate = parse_rate_to_float(revised_rate_raw)
+    if revised_rate is not None:
+        return {
+            "action": "revised_rate",
+            "load_number": load_number,
+            "rate": revised_rate,
+        }
+
+    return None

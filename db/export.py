@@ -18,8 +18,8 @@ def safe_sheet_title(title: str) -> str:
     return title[:31]
 
 # учзщке дщфвы
-@suppress_group
 @export_router.message(Command("export_excel"))
+@suppress_group
 async def export_excel(message: Message):
     wb = Workbook()
     ws = wb.active
@@ -53,8 +53,8 @@ async def export_excel(message: Message):
 
 # export by dispatch
 
-@suppress_group
 @export_router.message(Command("export_dispatcher"))
+@suppress_group
 async def export_dispatcher(message: Message):
     text = message.text or ""
     dispatcher_name = text.replace("/export_dispatcher", "", 1).strip()
@@ -63,18 +63,21 @@ async def export_dispatcher(message: Message):
         await message.reply("❌ Please provide the dispatcher's name:\n/export_dispatcher Sam Walter")
         return
 
-    with get_connection() as conn:
-        rows = conn.execute("""
+    rows = await fetch_all(
+        """
             SELECT 
                 d.name AS driver,
                 ds.name AS dispatcher,
                 l.load_number,
-                l.rate
+                l.rate,
+                l.miles
             FROM loads l
             JOIN drivers d ON l.driver_id = d.id
             JOIN dispatchers ds ON l.dispatcher_id = ds.id
-            WHERE ds.name = ?
-        """, (dispatcher_name,)).fetchall()
+            WHERE ds.name = $1
+        """,
+        dispatcher_name,
+    )
 
     if not rows:
         await message.reply(f"❌ Loads for dispather *{dispatcher_name}* not found", parse_mode="Markdown")
@@ -85,16 +88,18 @@ async def export_dispatcher(message: Message):
     sheet_name = safe_sheet_title(dispatcher_name)
     ws.title = sheet_name
 
-    ws.append(["Driver", "Dispatcher", "Load Number", "Rate"])
+    ws.append(["Driver", "Dispatcher", "Load Number", "Rate", "Miles"])
 
     total = 0
+    total_miles = 0
     for row in rows:
-        ws.append(row)
-        total += row[4]
+        ws.append([row["driver"], row["dispatcher"], row["load_number"], row["rate"], row["miles"]])
+        total += row["rate"] or 0
+        total_miles += row["miles"] or 0
 
     # Итоговая строка
     ws.append([])
-    ws.append(["", "", "TOTAL", round(total, 2)])
+    ws.append(["", "", "TOTAL", round(total, 2), round(total_miles, 2)])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -106,13 +111,13 @@ async def export_dispatcher(message: Message):
 
     await message.reply_document(
         document=file,
-        caption=f"📊 Gross dispatch: *{dispatcher_name}*\n💰 Total: ${total:.2f}",
+        caption=f"📊 Gross dispatch: *{dispatcher_name}*\n💰 Total: ${total:.2f}\nMiles: {total_miles:.2f}",
         parse_mode="Markdown"
     )
 
 # driver
-@suppress_group
 @export_router.message(Command("export_driver"))
+@suppress_group
 async def export_driver(message: Message):
     text = message.text or ""
     driver_name = text.replace("/export_driver", "", 1).strip()
@@ -121,18 +126,21 @@ async def export_driver(message: Message):
         await message.reply("❌ Enter the driver's group name:\n/export_driver 015 Daniiar Zhunusov")
         return
 
-    with get_connection() as conn:
-        rows = conn.execute("""
+    rows = await fetch_all(
+        """
             SELECT
                 d.name AS driver,
                 ds.name AS dispatcher,
                 l.load_number,
-                l.rate
+                l.rate,
+                l.miles
             FROM loads l
             JOIN drivers d ON l.driver_id = d.id
             JOIN dispatchers ds ON l.dispatcher_id = ds.id
-            WHERE d.name = ?
-        """, (driver_name,)).fetchall()
+            WHERE d.name = $1
+        """,
+        driver_name,
+    )
 
     if not rows:
         await message.reply(
@@ -146,15 +154,17 @@ async def export_driver(message: Message):
     sheet_name = safe_sheet_title(driver_name)
     ws.title = sheet_name
 
-    ws.append(["Driver", "Dispatcher", "Load Number", "Rate"])
+    ws.append(["Driver", "Dispatcher", "Load Number", "Rate", "Miles"])
 
     total = 0
+    total_miles = 0
     for row in rows:
-        ws.append([row['driver'], row['dispatcher'], row['load_number'], row['rate']])
-        total += row['rate']
+        ws.append([row["driver"], row["dispatcher"], row["load_number"], row["rate"], row["miles"]])
+        total += row["rate"] or 0
+        total_miles += row["miles"] or 0
 
     ws.append([])
-    ws.append(["", "", "TOTAL", round(total, 2)])
+    ws.append(["", "", "TOTAL", round(total, 2), round(total_miles, 2)])
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -166,6 +176,6 @@ async def export_driver(message: Message):
 
     await message.reply_document(
         document=file,
-        caption=f"🚚 Gross driver *{driver_name}*\n💰 Total: ${total:.2f}",
+        caption=f"🚚 Gross driver *{driver_name}*\n💰 Total: ${total:.2f}\nMiles: {total_miles:.2f}",
         parse_mode="Markdown"
     )

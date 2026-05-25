@@ -15,7 +15,7 @@ message_text = """
 ‼️LOAD NUMBER:  567765‼️
 ‼️Dispatch: Sam Walter ‼️
 DEL time: 2/25/2026 1230
-‼️RATE: $100 ‼️
+Rate: $100
 """
 
 result = parse_load(message_text)
@@ -26,6 +26,21 @@ result = parse_load(message_text)
 #     "del_date": "2/25/2026"  # NEW!
 # }
 ```
+
+**Load update messages:**
+```text
+‼️LOAD NUMBER: 0073741‼️
+canceled
+```
+
+Sets rate to `0.0` when the load exists.
+
+```text
+‼️LOAD NUMBER: 0073741‼️
+REVISED RATE: $1868.74
+```
+
+Updates only `rate`; all other load fields stay unchanged.
 
 ### 2. [db/database.py](db/database.py)
 **Changes:**
@@ -105,7 +120,7 @@ total = gross_by_driver("John Doe")
 
 ### When a Load Message is Received:
 ```
-1. Message arrives: "‼️LOAD NUMBER: 567765‼️...DEL time: 2/25/2026 1230...‼️RATE: $100 ‼️"
+1. Message arrives: "‼️LOAD NUMBER: 567765‼️...DEL time: 2/25/2026 1230...Rate: $100"
    ↓
 2. parse_load_from_parser(text) extracts all fields including del_date
    ↓

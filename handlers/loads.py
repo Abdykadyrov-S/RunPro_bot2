@@ -7,8 +7,9 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from db.database import execute_query, fetch_all, fetch_one, get_connection
-from services.admin import ADMINS, notify_admins
+from services.admin import ADMINS, notify_admins, suppress_group
 from services.parser import parse_load as parse_load_from_parser
+from services.parser import parse_load_update
 
 router = Router()
 
@@ -167,6 +168,7 @@ async def merge_dispatcher_records(source_id: int, target_id: int) -> tuple[bool
 
 
 @router.message(Command("drivers_db"))
+@suppress_group
 @admin_only
 async def command_drivers_db(message: Message):
     rows = await fetch_all(
@@ -195,6 +197,7 @@ async def command_drivers_db(message: Message):
 
 
 @router.message(Command("dispatchers_db"))
+@suppress_group
 @admin_only
 async def command_dispatchers_db(message: Message):
     rows = await fetch_all(
@@ -223,6 +226,7 @@ async def command_dispatchers_db(message: Message):
 
 
 @router.message(Command("merge_driver"))
+@suppress_group
 @admin_only
 async def command_merge_driver(message: Message):
     parts = (message.text or "").split()
@@ -242,6 +246,7 @@ async def command_merge_driver(message: Message):
 
 
 @router.message(Command("merge_dispatcher"))
+@suppress_group
 @admin_only
 async def command_merge_dispatcher(message: Message):
     parts = (message.text or "").split()
@@ -396,10 +401,58 @@ async def notify_dispatcher_saved_load(message: Message, parsed: dict):
         logging.warning("could not send save notification to dispatcher %s", message.from_user.id)
 
 
+async def update_existing_load_rate(load_number: str, rate: float) -> bool:
+    load = await fetch_one(
+        "SELECT id FROM loads WHERE load_number = $1",
+        load_number,
+    )
+    if load is None:
+        return False
+
+    await execute_query(
+        "UPDATE loads SET rate = $1 WHERE load_number = $2",
+        rate,
+        load_number,
+    )
+    return True
+
+
+async def handle_load_update_message(message: Message, update_data: dict) -> bool:
+    load_number = update_data["load_number"]
+    rate = update_data["rate"]
+    updated = await update_existing_load_rate(load_number, rate)
+
+    if not updated:
+        text = f"{CROSS_MARK} Load {load_number} was not found in database"
+        try:
+            await message.bot.send_message(message.from_user.id, text)
+        except Exception:
+            logging.warning("could not send load update notification to dispatcher %s", message.from_user.id)
+        await notify_admins(message.bot, text)
+        return True
+
+    if update_data["action"] == "canceled":
+        text = f"{CHECK_MARK} Load {load_number} was canceled. Rate changed to $0.00"
+    else:
+        text = f"{CHECK_MARK} Load {load_number} was revised. Rate changed to ${rate:.2f}"
+
+    try:
+        await message.bot.send_message(message.from_user.id, text)
+    except Exception:
+        logging.warning("could not send load update notification to dispatcher %s", message.from_user.id)
+    await notify_admins(message.bot, text)
+    return True
+
+
 @router.message(F.chat.type.in_({"group", "supergroup"}))
 async def handle_load_message(message: Message):
     text = message.text or ""
     if not text.startswith(MESSAGE_PREFIX):
+        return
+
+    update_data = parse_load_update(text)
+    if update_data is not None:
+        await handle_load_update_message(message, update_data)
         return
 
     driver_name = message.chat.title or "Unknown"
