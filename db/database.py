@@ -132,6 +132,7 @@ async def init_db():
             broker TEXT,
             load_number TEXT UNIQUE,
             rate REAL,
+            miles REAL,
             pu_date TEXT,
             del_date TEXT,
             FOREIGN KEY(driver_id) REFERENCES drivers(id),
@@ -140,6 +141,11 @@ async def init_db():
         """)
 
         # Чаты для регистрации
+        await connection.execute("""
+        ALTER TABLE loads
+        ADD COLUMN IF NOT EXISTS miles REAL
+        """)
+
         await connection.execute("""
         CREATE TABLE IF NOT EXISTS chats (
             chat_id BIGINT PRIMARY KEY,

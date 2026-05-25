@@ -25,17 +25,17 @@ async def export_excel(message: Message):
     ws = wb.active
     ws.title = "Loads"
 
-    ws.append(["Driver", "Dispatcher", "broker", "Load Number", "Rate"])
+    ws.append(["Driver", "Dispatcher", "broker", "Load Number", "Rate", "Miles"])
 
     rows = await fetch_all("""
-        SELECT d.name, ds.name, l.broker, l.load_number, l.rate
+        SELECT d.name AS driver, ds.name AS dispatcher, l.broker, l.load_number, l.rate, l.miles
         FROM loads l
         JOIN drivers d ON l.driver_id = d.id
         JOIN dispatchers ds ON l.dispatcher_id = ds.id
     """)
 
     for row in rows:
-        ws.append([row['name'], row['name'], row['broker'], row['load_number'], row['rate']])
+        ws.append([row['driver'], row['dispatcher'], row['broker'], row['load_number'], row['rate'], row['miles']])
 
     buffer = io.BytesIO()
     wb.save(buffer)

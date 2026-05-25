@@ -144,7 +144,7 @@ DEL time: 22 Mar
 
     result = parse_load(message)
 
-    required_fields = ["load_number", "dispatch", "rate", "pu_date", "del_date"]
+    required_fields = ["load_number", "dispatch", "rate", "miles", "pu_date", "del_date"]
     for field in required_fields:
         if field in result:
             print(f"  OK parse_load includes '{field}': {result[field]}")
@@ -164,6 +164,16 @@ DEL time: 22 Mar
         print(f"  FAIL rate not correctly parsed: {result.get('rate')}")
         return False
 
+    if result.get("miles") is not None:
+        print(f"  FAIL miles should be optional and missing here: {result.get('miles')}")
+        return False
+
+    message_with_miles = message + "\nMiles: 1,250.5 mi"
+    result_with_miles = parse_load(message_with_miles)
+    if result_with_miles.get("miles") != 1250.5:
+        print(f"  FAIL miles not correctly parsed: {result_with_miles.get('miles')}")
+        return False
+
     print("  OK parse_load correctly normalizes supported date formats")
     return True
 
@@ -181,13 +191,13 @@ def test_database():
             columns = await fetch_all("""
                 SELECT column_name
                 FROM information_schema.columns
-                WHERE table_name = 'loads' AND column_name = 'del_date'
+                WHERE table_name = 'loads' AND column_name = 'miles'
             """)
 
             if columns:
-                print("  OK 'del_date' column exists in 'loads' table")
+                print("  OK 'miles' column exists in 'loads' table")
             else:
-                print("  FAIL 'del_date' column missing from 'loads' table")
+                print("  FAIL 'miles' column missing from 'loads' table")
                 return False
 
             return True

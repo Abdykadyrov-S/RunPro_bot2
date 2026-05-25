@@ -268,6 +268,7 @@ async def add_load(
     broker,
     load_number,
     rate,
+    miles=None,
     pu_date=None,
     del_date=None,
 ):
@@ -361,14 +362,15 @@ async def add_load(
 
         await execute_query(
             """
-            INSERT INTO loads (driver_id, dispatcher_id, broker, load_number, rate, pu_date, del_date)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO loads (driver_id, dispatcher_id, broker, load_number, rate, miles, pu_date, del_date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
             driver_id,
             dispatcher_id,
             broker,
             load_number,
             rate,
+            miles,
             pu_date,
             del_date,
         )
@@ -380,11 +382,13 @@ async def add_load(
 
 
 async def notify_dispatcher_saved_load(message: Message, parsed: dict):
+    miles_line = f"\nMiles: {parsed['miles']}" if parsed.get("miles") is not None else ""
     dispatcher_text = (
         f"{CHECK_MARK} Load saved\n"
         f"Driver: {message.chat.title or 'Unknown'}\n"
         f"Load: {parsed['load_number']}\n"
         f"Rate: ${parsed['rate']:.2f}"
+        f"{miles_line}"
     )
     try:
         await message.bot.send_message(message.from_user.id, dispatcher_text)
@@ -413,6 +417,7 @@ async def handle_load_message(message: Message):
         parsed.get("broker"),
         parsed["load_number"],
         parsed["rate"],
+        parsed.get("miles"),
         parsed.get("pu_date"),
         parsed.get("del_date"),
     )
@@ -420,16 +425,19 @@ async def handle_load_message(message: Message):
     if success:
         await notify_dispatcher_saved_load(message, parsed)
 
+        miles_line = f"\nMiles: {parsed['miles']}" if parsed.get("miles") is not None else ""
         admin_text = (
             f"{CHECK_MARK} Saved load in group '{message.chat.title or 'Unknown'}'\n"
             f"Load: {parsed['load_number']}\n"
             f"Dispatcher: {parsed['dispatch']}\n"
             f"Rate: ${parsed['rate']:.2f}"
+            f"{miles_line}"
         )
         await notify_admins(message.bot, admin_text)
     elif error == "duplicate":
         pending_updates[parsed["load_number"]] = {
             "rate": parsed["rate"],
+            "miles": parsed.get("miles"),
             "pu_date": parsed.get("pu_date"),
             "del_date": parsed.get("del_date"),
             "broker": parsed.get("broker"),
@@ -467,9 +475,10 @@ async def handle_yes_update(call: CallbackQuery):
 
     await execute_query(
         """
-        UPDATE loads SET rate = $1, pu_date = $2, del_date = $3, broker = $4 WHERE load_number = $5
+        UPDATE loads SET rate = $1, miles = $2, pu_date = $3, del_date = $4, broker = $5 WHERE load_number = $6
         """,
         update_data["rate"],
+        update_data.get("miles"),
         update_data.get("pu_date"),
         update_data.get("del_date"),
         update_data.get("broker"),

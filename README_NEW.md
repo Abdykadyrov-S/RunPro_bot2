@@ -97,10 +97,10 @@ python main.py
 
 ### Message Format
 ```
-‼️BOOKED BY CMA ‼️
-‼️BROKER: ITS‼️
+‼️BOOKED BY COMPANY-NAME ‼️
+‼️BROKER: BROKER-NAME ‼️
 ‼️LOAD NUMBER: 567765‼️
-‼️Dispatch: Sam Walter ‼️
+‼️Dispatch: DISPATCH-NAME ‼️
 ===================
 PU address: 123 Main St
 PU time: 02/25/2026 0330

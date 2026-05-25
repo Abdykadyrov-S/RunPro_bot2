@@ -26,6 +26,12 @@ def extract_between(text: str, start: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def extract_line_value(text: str, field_name: str) -> str | None:
+    pattern = rf"(?i)\b{re.escape(field_name)}\s*:?\s*([^\r\n{re.escape(FIELD_END)}]+)"
+    match = re.search(pattern, text)
+    return match.group(1).strip() if match else None
+
+
 def parse_rate_to_float(rate_text: str) -> float | None:
     if not rate_text:
         return None
@@ -35,6 +41,20 @@ def parse_rate_to_float(rate_text: str) -> float | None:
 
     try:
         return round(float(normalized), 2)
+    except ValueError:
+        return None
+
+
+def parse_miles_to_float(miles_text: str) -> float | None:
+    if not miles_text:
+        return None
+
+    match = re.search(r"\d[\d,]*(?:\.\d+)?", miles_text)
+    if not match:
+        return None
+
+    try:
+        return round(float(match.group(0).replace(",", "")), 2)
     except ValueError:
         return None
 
@@ -74,6 +94,7 @@ def parse_date_from_time_string(time_string: str) -> str | None:
 
 def parse_load(text: str) -> dict:
     rate_raw = extract_between(text, f"{FIELD_END}RATE:")
+    miles_raw = extract_line_value(text, "Miles")
     pu_time = extract_between(text, "PU time:")
     pu_date = parse_date_from_time_string(pu_time) if pu_time else None
 
@@ -85,6 +106,7 @@ def parse_load(text: str) -> dict:
         "dispatch": extract_between(text, f"{FIELD_END}Dispatch:"),
         "broker": extract_between(text, f"{FIELD_END}BROKER:"),
         "rate": parse_rate_to_float(rate_raw),
+        "miles": parse_miles_to_float(miles_raw),
         "pu_date": pu_date,
         "del_date": del_date,
     }
