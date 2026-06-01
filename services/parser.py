@@ -117,7 +117,7 @@ def parse_load_update(text: str) -> dict | None:
     if not load_number:
         return None
 
-    if re.search(r"\bcanceled\b", text, re.IGNORECASE):
+    if re.search(r"\bcancell?ed\b", text, re.IGNORECASE):
         return {
             "action": "canceled",
             "load_number": load_number,

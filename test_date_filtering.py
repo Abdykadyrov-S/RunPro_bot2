@@ -174,10 +174,12 @@ Rate: $100"""
         print(f"  FAIL miles not correctly parsed: {result_with_miles.get('miles')}")
         return False
 
-    canceled = parse_load_update("\u203c\ufe0fLOAD NUMBER: 0073741\u203c\ufe0f\ncanceled")
-    if canceled != {"action": "canceled", "load_number": "0073741", "rate": 0.0}:
-        print(f"  FAIL canceled update not correctly parsed: {canceled}")
-        return False
+    cancel_cases = ["canceled", "cancelled", "CANCELED", "CANCELLED"]
+    for cancel_text in cancel_cases:
+        canceled = parse_load_update(f"\u203c\ufe0fLOAD NUMBER: 0073741\u203c\ufe0f\n{cancel_text}")
+        if canceled != {"action": "canceled", "load_number": "0073741", "rate": 0.0}:
+            print(f"  FAIL {cancel_text} update not correctly parsed: {canceled}")
+            return False
 
     revised = parse_load_update("\u203c\ufe0fLOAD NUMBER: 0073741\u203c\ufe0f\nREVISED RATE: $1868.74")
     if revised != {"action": "revised_rate", "load_number": "0073741", "rate": 1868.74}:
